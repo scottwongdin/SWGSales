@@ -57,7 +57,9 @@ st.markdown("---")
 # ── Sales Over Time ───────────────────────────────────────────────────────────
 st.subheader("📈 Revenue Over Time")
 sales_over_time = query(f"""
-    SELECT sold_date, SUM(price) as revenue, COUNT(*) as num_sales
+    SELECT sold_date, 
+        SUM(price) as revenue, 
+        COUNT(*) as num_sales
     FROM sales
     WHERE sold_date IS NOT NULL {vendor_filter_and}
     GROUP BY sold_date
@@ -65,7 +67,8 @@ sales_over_time = query(f"""
 """)
 
 if not sales_over_time.empty:
-    st.line_chart(sales_over_time.set_index("sold_date")["revenue"])
+    sales_over_time["avg_revenue"] = sales_over_time["revenue"].rolling(window=7, min_periods=1).mean().round(0)
+    st.line_chart(sales_over_time.set_index("sold_date")[["revenue", "avg_revenue"]])
 else:
     st.info("No sales data available.")
 
