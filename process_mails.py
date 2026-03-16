@@ -1,13 +1,11 @@
-import sqlite3
 import os
 import shutil
-import argparse
-from datetime import datetime, timezone
+import psycopg2
+from datetime import datetime
 from zoneinfo import ZoneInfo
 import re
+from config import DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_PORT
 
-DB_NAME = "swg.db"
-DB_PATH = r"C:\Users\scott\OneDrive\Documents\SWGSales\swg.db"
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logging.txt")
 
 
@@ -20,39 +18,11 @@ def log(message):
         f.write(full_message + "\n")
 
 
-def create_table(conn):
-    """Create the mail table if it doesn't exist."""
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS sales (
-            mail_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            filename TEXT UNIQUE,
-            body TEXT,
-            datetime TEXT,
-            sold_date TEXT,
-            sold_time TEXT,
-            product TEXT,
-            price INTEGER,
-            customer TEXT,
-            crate_size INTEGER,
-            vendor TEXT
-        )
-    """)
-    conn.commit()
-
-
-def create_inventory_table(conn):
-    """Create the inventory table if it doesn't exist."""
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS inventory (
-            product_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product TEXT,
-            total_units INTEGER,
-            vendor TEXT,
-            restock INTEGER DEFAULT -1,
-            UNIQUE (product, total_units, vendor)
-        )
-    """)
-    conn.commit()
+def get_conn():
+    return psycopg2.connect(
+        host=DB_HOST, dbname=DB_NAME, user=DB_USER,
+        password=DB_PASSWORD, port=DB_PORT
+    )
 
 
 def extract_sold_datetime(body):
@@ -105,32 +75,29 @@ def extract_product(body):
     1. Pipe format: text between first and second pipe
     2. Simple format: text between 'sold' and 'to'
     """
-    # Try pipe format first
     match = re.search(r"^Vendor:.*?\|(.+?)\|", body, re.MULTILINE | re.IGNORECASE)
     if match:
         return match.group(1).strip()
-    # Fall back to simple format: between 'sold' and 'to'
     match = re.search(r"\bsold\s+(.+?)\s+to\b", body, re.IGNORECASE)
     if match:
         return match.group(1).strip()
     return None
 
 
-def file_already_imported(conn, filename):
+def file_already_imported(cur, filename):
     """Check if a file has already been imported by filename."""
-    cursor = conn.execute("SELECT 1 FROM sales WHERE filename = ?", (filename,))
-    return cursor.fetchone() is not None
+    cur.execute("SELECT 1 FROM sales WHERE filename = %s", (filename,))
+    return cur.fetchone() is not None
 
 
 def import_mail_files(directory):
-    """Read all .mail files from a directory and insert into SQLite."""
+    """Read all .mail files from a directory and insert into PostgreSQL."""
     if not os.path.isdir(directory):
         log(f"Error: '{directory}' is not a valid directory.")
         return
 
-    conn = sqlite3.connect(DB_PATH)
-    create_table(conn)
-    create_inventory_table(conn)
+    conn = get_conn()
+    cur = conn.cursor()
 
     files = [f for f in os.listdir(directory) if f.endswith(".mail")]
 
@@ -149,7 +116,7 @@ def import_mail_files(directory):
     for filename in files:
         filepath = os.path.join(directory, filename)
 
-        if file_already_imported(conn, filename):
+        if file_already_imported(cur, filename):
             skipped += 1
         else:
             with open(filepath, "r", encoding="utf-8", errors="replace") as f:
@@ -179,20 +146,22 @@ def import_mail_files(directory):
                     crate_size = 1
                 else:
                     crate_size = extract_quantity(body)
-                conn.execute(
-                    "INSERT INTO sales (filename, body, datetime, sold_date, sold_time, product, price, customer, crate_size, vendor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (filename, body, datetime.now().isoformat(), sold_date, sold_time, product, price, customer, crate_size, vendor)
-                )
+                cur.execute("""
+                    INSERT INTO sales (filename, body, datetime, sold_date, sold_time, product, price, customer, crate_size, vendor)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (filename) DO NOTHING
+                """, (filename, body, datetime.now().isoformat(), sold_date, sold_time, product, price, customer, crate_size, vendor))
                 # Decrease total_units by crate_size for matching product and vendor
-                cursor = conn.execute("""
-                    UPDATE inventory SET total_units = total_units - ?
-                    WHERE product = ? AND vendor = ?
+                cur.execute("""
+                    UPDATE inventory SET total_units = total_units - %s
+                    WHERE product = %s AND vendor = %s
                 """, (crate_size, product, vendor))
                 # If no matching row was found, insert a new row with total_units = -crate_size
-                if cursor.rowcount == 0:
-                    conn.execute("""
+                if cur.rowcount == 0:
+                    cur.execute("""
                         INSERT INTO inventory (product, total_units, vendor, restock)
-                        VALUES (?, ?, ?, -1)
+                        VALUES (%s, %s, %s, -1)
+                        ON CONFLICT (product, total_units, vendor) DO NOTHING
                     """, (product, -crate_size, vendor))
                     log(f"  [INVENTORY] No inventory found — inserted new row with total_units -{crate_size}")
                     log(f"              filename  : {filename}")
@@ -211,12 +180,12 @@ def import_mail_files(directory):
             moved += 1
 
     conn.commit()
+    cur.close()
     conn.close()
 
     log(f"\nDone! {imported} imported, {skipped} skipped, {moved} moved to 'processed/'.")
     if move_warnings:
         log(f"Warning: {move_warnings} file(s) could not be moved — create a 'processed' folder in '{directory}' to enable moving.")
-    log(f"Database: {DB_PATH}")
 
 
 if __name__ == "__main__":

@@ -1,10 +1,10 @@
 import streamlit as st
-import sqlite3
+import psycopg2
 import pandas as pd
 import os
-
-# ── Config ──────────────────────────────────────────────────────────────────
-DB_PATH = r"C:\Users\scott\OneDrive\Documents\SWGSales\swg.db"
+import sys
+sys.path.insert(0, r"C:\Users\scott\OneDrive\Documents\SWGSales")
+from config import DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_PORT
 
 st.set_page_config(
     page_title="SWG Vendor Dashboard",
@@ -15,7 +15,10 @@ st.set_page_config(
 # ── Helpers ──────────────────────────────────────────────────────────────────
 @st.cache_resource
 def get_connection():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
+    return psycopg2.connect(
+        host=DB_HOST, dbname=DB_NAME, user=DB_USER,
+        password=DB_PASSWORD, port=DB_PORT
+    )
 
 def query(sql, params=None):
     conn = get_connection()
@@ -230,9 +233,9 @@ if not products_list.empty:
 
     # Build date filter based on time range selection
     if time_range == "Last Week":
-        date_filter = "AND sold_date >= date('now', '-7 days')"
+        date_filter = "AND sold_date >= (CURRENT_DATE - INTERVAL '7 days')::text"
     elif time_range == "Last Month":
-        date_filter = "AND sold_date >= date('now', '-1 month')"
+        date_filter = "AND sold_date >= (CURRENT_DATE - INTERVAL '1 month')::text"
     else:
         date_filter = ""
 
@@ -241,15 +244,15 @@ if not products_list.empty:
 
         product_revenue = query(f"""
             SELECT COALESCE(SUM(price), 0) as total FROM sales
-            WHERE product = ? {date_filter}
+            WHERE product = %s {date_filter}
         """, params=(selected_product,))
         product_units = query(f"""
             SELECT COALESCE(SUM(crate_size), 0) as total FROM sales
-            WHERE product = ? {date_filter}
+            WHERE product = %s {date_filter}
         """, params=(selected_product,))
         product_sales = query(f"""
             SELECT COUNT(*) as total FROM sales
-            WHERE product = ? {date_filter}
+            WHERE product = %s {date_filter}
         """, params=(selected_product,))
 
         col1.metric("💰 Total Revenue",  f"{product_revenue['total'][0]:,} credits")
@@ -261,7 +264,7 @@ if not products_list.empty:
         product_over_time = query(f"""
             SELECT sold_date, SUM(price) as revenue
             FROM sales
-            WHERE product = ? AND sold_date IS NOT NULL {date_filter}
+            WHERE product = %s AND sold_date IS NOT NULL {date_filter}
             GROUP BY sold_date
             ORDER BY sold_date
         """, params=(selected_product,))
@@ -276,7 +279,7 @@ if not products_list.empty:
             product_customers = query(f"""
                 SELECT customer, COUNT(*) as purchases, SUM(price) as total_spent
                 FROM sales
-                WHERE product = ? AND customer IS NOT NULL {date_filter}
+                WHERE product = %s AND customer IS NOT NULL {date_filter}
                 GROUP BY customer
                 ORDER BY total_spent DESC
                 LIMIT 10
@@ -292,7 +295,7 @@ if not products_list.empty:
             product_vendors = query(f"""
                 SELECT vendor, COUNT(*) as sales, SUM(price) as revenue
                 FROM sales
-                WHERE product = ? AND vendor IS NOT NULL {date_filter}
+                WHERE product = %s AND vendor IS NOT NULL {date_filter}
                 GROUP BY vendor
                 ORDER BY revenue DESC
             """, params=(selected_product,))
@@ -306,7 +309,7 @@ if not products_list.empty:
         product_history = query(f"""
             SELECT sold_date, sold_time, crate_size, price, customer, vendor
             FROM sales
-            WHERE product = ? {date_filter}
+            WHERE product = %s {date_filter}
             ORDER BY sold_date DESC, sold_time DESC
         """, params=(selected_product,))
         if not product_history.empty:
