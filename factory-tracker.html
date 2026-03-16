@@ -226,7 +226,17 @@
 
 <script>
 const LINE_COLORS = ['var(--line1)','var(--line2)','var(--line3)','var(--line4)','var(--line5)'];
-const API = 'http://localhost:5050/api';
+
+// Credentials — fill in your Supabase URL and anon key
+const SUPABASE_URL = 'https://pjoifmlwrnewwqxewqbw.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqb2lmbWx3cm5ld3dxeGV3cWJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2ODM0OTgsImV4cCI6MjA4OTI1OTQ5OH0.DWLbK62dxLRnLGoe4XMlgyOS00DDs60ou4LjqZi1BrM';
+
+const SB_HEADERS = {
+  'apikey': SUPABASE_KEY,
+  'Authorization': `Bearer ${SUPABASE_KEY}`,
+  'Content-Type': 'application/json',
+  'Prefer': 'return=representation'
+};
 
 let state = { lines: [], history: [] };
 let timers = {};
@@ -234,56 +244,64 @@ let timers = {};
 async function loadState() {
   try {
     const [linesRes, histRes] = await Promise.all([
-      fetch(`${API}/lines`),
-      fetch(`${API}/history`)
+      fetch(`${SUPABASE_URL}/rest/v1/factory_lines?order=sort_order.asc`, { headers: SB_HEADERS }),
+      fetch(`${SUPABASE_URL}/rest/v1/factory_history?order=created_at.desc`, { headers: SB_HEADERS })
     ]);
     const lines = await linesRes.json();
     const history = await histRes.json();
-    // Map DB field names back to JS field names
     state.lines = lines.map(l => ({
-      id: l.id,
-      name: l.name,
-      colorIdx: l.color_idx,
-      product: l.product || '',
-      tpu: l.tpu,
-      unit: l.unit || 'sec',
-      qty: l.qty,
-      status: l.status || 'idle',
-      startedAt: l.started_at,
-      totalSec: l.total_sec || 0
+      id: l.id, name: l.name, colorIdx: l.color_idx,
+      product: l.product || '', tpu: l.tpu, unit: l.unit || 'sec',
+      qty: l.qty, status: l.status || 'idle',
+      startedAt: l.started_at, totalSec: l.total_sec || 0
     }));
     state.history = history.map(h => ({
-      id: h.id,
-      product: h.product || '',
-      tpu: h.tpu,
-      unit: h.unit || 'sec',
-      qty: h.qty,
-      createdAt: h.created_at
+      id: h.id, product: h.product || '', tpu: h.tpu,
+      unit: h.unit || 'sec', qty: h.qty, createdAt: h.created_at
     }));
   } catch(e) {
-    console.error('Failed to load state from API:', e);
-    toast('⚠ Could not connect to Factory API. Is factory_api.py running?');
+    console.error('Failed to load state from Supabase:', e);
+    toast('⚠ Could not connect to Supabase. Check your credentials.');
     state = { lines: [], history: [] };
   }
 }
 
-async function saveState() {
+async function saveLines() {
   try {
-    await Promise.all([
-      fetch(`${API}/lines`, {
+    // Delete all existing lines then upsert current ones
+    await fetch(`${SUPABASE_URL}/rest/v1/factory_lines?id=not.is.null`, {
+      method: 'DELETE', headers: SB_HEADERS
+    });
+    if (state.lines.length > 0) {
+      await fetch(`${SUPABASE_URL}/rest/v1/factory_lines`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(state.lines)
-      }),
-      fetch(`${API}/history`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(state.history)
-      })
-    ]);
-  } catch(e) {
-    console.error('Failed to save state to API:', e);
-  }
+        headers: { ...SB_HEADERS, 'Prefer': 'resolution=merge-duplicates' },
+        body: JSON.stringify(state.lines.map((l, i) => ({
+          id: l.id, name: l.name, color_idx: l.colorIdx,
+          product: l.product || '', tpu: l.tpu, unit: l.unit || 'sec',
+          qty: l.qty, status: l.status || 'idle',
+          started_at: l.startedAt, total_sec: l.totalSec || 0, sort_order: i
+        })))
+      });
+    }
+  } catch(e) { console.error('Failed to save lines:', e); }
+}
+
+async function saveHistory() {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/factory_history`, {
+      method: 'POST',
+      headers: { ...SB_HEADERS, 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify(state.history.map(h => ({
+        id: h.id, product: h.product || '', tpu: h.tpu,
+        unit: h.unit || 'sec', qty: h.qty, created_at: h.createdAt || 0
+      })))
+    });
+  } catch(e) { console.error('Failed to save history:', e); }
+}
+
+async function saveState() {
+  await Promise.all([saveLines(), saveHistory()]);
 }
 
 function fmtDur(secs) {

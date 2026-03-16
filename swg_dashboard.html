@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SWG Vendor Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0e0f11;
+    --surface: #16181c;
+    --surface2: #1e2026;
+    --border: #2a2d35;
+    --accent: #d4f54a;
+    --accent2: #4af5a0;
+    --danger: #f54a4a;
+    --warning: #f5c842;
+    --text: #f0f0ee;
+    --muted: #6b6f7a;
+    --muted2: #4a4d57;
+    --radius: 10px;
+    --mono: 'DM Mono', monospace;
+    --display: 'Syne', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 14px; min-height: 100vh; }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.2; pointer-events: none; z-index: 0;
+  }
+  .app { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+  /* Header */
+  header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 2rem; gap: 1rem; flex-wrap: wrap; }
+  .logo { font-family: var(--display); font-size: 28px; font-weight: 800; letter-spacing: -0.5px; line-height: 1; }
+  .logo span { color: var(--accent); }
+  .header-sub { font-size: 11px; color: var(--muted); margin-top: 4px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .header-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  /* Controls */
+  select, button {
+    padding: 7px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text); font-family: var(--mono); font-size: 13px;
+    cursor: pointer; outline: none; transition: all 0.15s;
+  }
+  select:focus, button:hover { border-color: var(--accent); color: var(--accent); }
+  select option { background: var(--surface); }
+  .btn-accent { background: var(--accent); color: #0e0f11; border-color: var(--accent); font-weight: 500; }
+  .btn-accent:hover { background: #c4e540; color: #0e0f11; border-color: #c4e540; }
+
+  /* KPI Grid */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+  .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.2rem 1.5rem; }
+  .kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px; }
+  .kpi-value { font-family: var(--display); font-size: 24px; font-weight: 700; color: var(--accent); }
+  .kpi-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  /* Sections */
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.5rem; }
+  .section-title { font-family: var(--display); font-size: 16px; font-weight: 700; margin-bottom: 1.2rem; display: flex; align-items: center; gap: 8px; }
+
+  /* Two col */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); padding: 0 8px 10px; border-bottom: 1px solid var(--border); font-weight: 400; }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+  tbody td { padding: 9px 8px; color: var(--text); }
+  tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody td.accent { color: var(--accent); }
+  .row-danger td { background: rgba(245,74,74,0.08) !important; }
+  .row-warning td { background: rgba(245,200,66,0.08) !important; }
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; }
+  .badge-danger { background: rgba(245,74,74,0.15); color: var(--danger); border: 1px solid rgba(245,74,74,0.3); }
+  .badge-warning { background: rgba(245,200,66,0.15); color: var(--warning); border: 1px solid rgba(245,200,66,0.3); }
+  .badge-ok { background: rgba(74,245,160,0.1); color: var(--accent2); border: 1px solid rgba(74,245,160,0.2); }
+
+  /* Chart */
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* Drilldown */
+  .drilldown-controls { display: flex; gap: 10px; margin-bottom: 1.2rem; flex-wrap: wrap; }
+  .drilldown-controls select { flex: 1; min-width: 200px; }
+  .drilldown-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 1.2rem; }
+  .drilldown-kpi { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; }
+  .drilldown-kpi .kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 4px; }
+  .drilldown-kpi .kpi-value { font-family: var(--display); font-size: 20px; font-weight: 700; color: var(--accent); }
+
+  /* Loading */
+  .loading { text-align: center; padding: 2rem; color: var(--muted); font-size: 13px; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 8px; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Legend */
+  .legend { font-size: 11px; color: var(--muted); margin-top: 10px; display: flex; gap: 16px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* Empty */
+  .empty { text-align: center; padding: 2rem; color: var(--muted); font-size: 13px; }
+
+  @media (max-width: 768px) {
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+    .two-col { grid-template-columns: 1fr; }
+    .drilldown-kpis { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div>
+      <div class="logo">SWG <span>Vendor</span></div>
+      <div class="header-sub">Sales & Inventory Dashboard</div>
+    </div>
+    <div class="header-controls">
+      <select id="vendor-filter" onchange="loadAll()">
+        <option value="">All Vendors</option>
+        <option value="Cafe Eponine">Cafe Eponine</option>
+        <option value="Brasserie Eponine">Brasserie Eponine</option>
+      </select>
+      <button class="btn-accent" onclick="loadAll()">↻ Refresh</button>
+    </div>
+  </header>
+
+  <!-- KPIs -->
+  <div class="kpi-grid" id="kpi-grid">
+    <div class="kpi-card"><div class="kpi-label">Total Revenue</div><div class="kpi-value" id="kpi-revenue">—</div></div>
+    <div class="kpi-card"><div class="kpi-label">Total Sales</div><div class="kpi-value" id="kpi-sales">—</div></div>
+    <div class="kpi-card"><div class="kpi-label">Unique Products</div><div class="kpi-value" id="kpi-products">—</div></div>
+    <div class="kpi-card"><div class="kpi-label">Unique Customers</div><div class="kpi-value" id="kpi-customers">—</div></div>
+  </div>
+
+  <!-- Revenue Over Time -->
+  <div class="section">
+    <div class="section-title">📈 Revenue Over Time</div>
+    <div class="chart-wrap"><canvas id="revenue-chart"></canvas></div>
+  </div>
+
+  <!-- Top Products & Customers -->
+  <div class="two-col">
+    <div class="section">
+      <div class="section-title">🏆 Top Products by Revenue</div>
+      <div id="top-products"><div class="loading"><span class="spinner"></span>Loading...</div></div>
+    </div>
+    <div class="section">
+      <div class="section-title">👥 Top Customers by Spend</div>
+      <div id="top-customers"><div class="loading"><span class="spinner"></span>Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- Revenue by Vendor -->
+  <div class="section">
+    <div class="section-title">🏪 Revenue by Vendor</div>
+    <div id="vendor-revenue"><div class="loading"><span class="spinner"></span>Loading...</div></div>
+  </div>
+
+  <!-- Inventory -->
+  <div class="section">
+    <div class="section-title">📦 Inventory Summary</div>
+    <div id="inventory"><div class="loading"><span class="spinner"></span>Loading...</div></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--danger)"></div> Out of stock or negative</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--warning)"></div> Below restock threshold</div>
+    </div>
+  </div>
+
+  <!-- Recent Sales -->
+  <div class="section">
+    <div class="section-title">🕐 Recent Sales</div>
+    <div id="recent-sales"><div class="loading"><span class="spinner"></span>Loading...</div></div>
+  </div>
+
+  <!-- Product Drilldown -->
+  <div class="section">
+    <div class="section-title">🔍 Product Drilldown</div>
+    <div class="drilldown-controls">
+      <select id="product-select" onchange="loadDrilldown()">
+        <option value="">— select a product —</option>
+      </select>
+      <select id="time-range" onchange="loadDrilldown()">
+        <option value="all">All Time</option>
+        <option value="month">Last Month</option>
+        <option value="week">Last Week</option>
+      </select>
+    </div>
+    <div id="drilldown-content"></div>
+  </div>
+
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+// Fill in your Supabase credentials here
+const SUPABASE_URL = 'https://pjoifmlwrnewwqxewqbw.supabase.co';     // from config.py
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqb2lmbWx3cm5ld3dxeGV3cWJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2ODM0OTgsImV4cCI6MjA4OTI1OTQ5OH0.DWLbK62dxLRnLGoe4XMlgyOS00DDs60ou4LjqZi1BrM'; // from config.py
+
+// ── API ───────────────────────────────────────────────────────────────────────
+async function sbQuery(table, select = '*', filters = '', order = '', limit = '') {
+  let url = `${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}`;
+  if (filters) url += `&${filters}`;
+  if (order) url += `&order=${order}`;
+  if (limit) url += `&limit=${limit}`;
+  const res = await fetch(url, {
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+  });
+  return res.json();
+}
+
+async function sbRpc(fn, params = {}) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(params)
+  });
+  return res.json();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmt(n) { return n != null ? Number(n).toLocaleString() : '—'; }
+function fmtCredits(n) { return n != null ? Number(n).toLocaleString() + ' cr' : '—'; }
+
+function vendor() { return document.getElementById('vendor-filter').value; }
+
+function vendorFilter(prefix = 'and') {
+  const v = vendor();
+  return v ? `${prefix}vendor=eq.${encodeURIComponent(v)}` : '';
+}
+
+function dateFilter(range) {
+  const today = new Date();
+  if (range === 'week') {
+    const d = new Date(today); d.setDate(d.getDate() - 7);
+    return `&sold_date=gte.${d.toISOString().slice(0,10)}`;
+  }
+  if (range === 'month') {
+    const d = new Date(today); d.setMonth(d.getMonth() - 1);
+    return `&sold_date=gte.${d.toISOString().slice(0,10)}`;
+  }
+  return '';
+}
+
+function formatCrates(val, product) {
+  const skip = ['supplement', 'substitute', 'sample'];
+  if (skip.some(s => (product||'').toLowerCase().includes(s))) return '';
+  if (val == null) return '';
+  return parseFloat(val).toFixed(1).replace(/\.?0+$/, '');
+}
+
+function tableHTML(headers, rows) {
+  if (!rows.length) return '<div class="empty">No data available.</div>';
+  return `<table>
+    <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+    <tbody>${rows.join('')}</tbody>
+  </table>`;
+}
+
+// ── Revenue chart instance ────────────────────────────────────────────────────
+let revenueChart = null;
+
+// ── Load All ──────────────────────────────────────────────────────────────────
+async function loadAll() {
+  await Promise.all([
+    loadKPIs(),
+    loadRevenueChart(),
+    loadTopProducts(),
+    loadTopCustomers(),
+    loadVendorRevenue(),
+    loadInventory(),
+    loadRecentSales(),
+    loadProductList()
+  ]);
+}
+
+// ── KPIs ──────────────────────────────────────────────────────────────────────
+async function loadKPIs() {
+  const vf = vendorFilter('&');
+  const [rev, sales, prods, custs] = await Promise.all([
+    sbRpc('get_total_revenue', { vendor_filter: vendor() || null }),
+    sbRpc('get_total_sales', { vendor_filter: vendor() || null }),
+    sbRpc('get_unique_products', { vendor_filter: vendor() || null }),
+    sbRpc('get_unique_customers', { vendor_filter: vendor() || null }),
+  ]).catch(() => [null,null,null,null]);
+
+  // Fallback: query directly
+  const rows = await sbQuery('sales', 'price,product,customer', vf ? vf.slice(1) : '');
+  if (Array.isArray(rows)) {
+    const total = rows.reduce((s, r) => s + (r.price || 0), 0);
+    const prods = new Set(rows.map(r => r.product)).size;
+    const custs = new Set(rows.map(r => r.customer)).size;
+    document.getElementById('kpi-revenue').textContent = fmtCredits(total);
+    document.getElementById('kpi-sales').textContent = fmt(rows.length);
+    document.getElementById('kpi-products').textContent = fmt(prods);
+    document.getElementById('kpi-customers').textContent = fmt(custs);
+  }
+}
+
+// ── Revenue Chart ─────────────────────────────────────────────────────────────
+async function loadRevenueChart() {
+  const vf = vendorFilter('&');
+  let url = `${SUPABASE_URL}/rest/v1/sales?select=sold_date,price${vf ? '&' + vf.slice(1) : ''}&sold_date=not.is.null&order=sold_date.asc`;
+  const res = await fetch(url, { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
+  const rows = await res.json();
+  if (!Array.isArray(rows) || !rows.length) return;
+
+  // Group by date
+  const map = {};
+  rows.forEach(r => { map[r.sold_date] = (map[r.sold_date] || 0) + (r.price || 0); });
+  const labels = Object.keys(map).sort();
+  const revenue = labels.map(d => map[d]);
+
+  // 7-day rolling average
+  const avg = revenue.map((_, i) => {
+    const slice = revenue.slice(Math.max(0, i - 6), i + 1);
+    return Math.round(slice.reduce((a, b) => a + b, 0) / slice.length);
+  });
+
+  const ctx = document.getElementById('revenue-chart').getContext('2d');
+  if (revenueChart) revenueChart.destroy();
+  revenueChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Revenue', data: revenue, borderColor: '#d4f54a', backgroundColor: 'rgba(212,245,74,0.08)', tension: 0.3, pointRadius: 2, borderWidth: 2 },
+        { label: '7-Day Avg', data: avg, borderColor: '#4af5a0', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0, borderWidth: 2, borderDash: [4, 4] }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#6b6f7a', font: { family: 'DM Mono', size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#6b6f7a', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: 10 }, grid: { color: '#2a2d35' } },
+        y: { ticks: { color: '#6b6f7a', font: { family: 'DM Mono', size: 10 }, callback: v => fmt(v) }, grid: { color: '#2a2d35' } }
+      }
+    }
+  });
+}
+
+// ── Top Products ──────────────────────────────────────────────────────────────
+async function loadTopProducts() {
+  const vf = vendorFilter('&');
+  const rows = await sbQuery('sales', 'product,price,crate_size', vf ? vf.slice(1) + '&product=not.is.null' : 'product=not.is.null');
+  if (!Array.isArray(rows)) return;
+  const map = {};
+  rows.forEach(r => {
+    if (!map[r.product]) map[r.product] = { revenue: 0, units: 0 };
+    map[r.product].revenue += r.price || 0;
+    map[r.product].units += r.crate_size || 0;
+  });
+  const sorted = Object.entries(map).sort((a,b) => b[1].revenue - a[1].revenue).slice(0,10);
+  const html = tableHTML(
+    ['Product', 'Revenue', 'Units'],
+    sorted.map(([p, d]) => `<tr><td>${p}</td><td class="num accent">${fmtCredits(d.revenue)}</td><td class="num">${fmt(d.units)}</td></tr>`)
+  );
+  document.getElementById('top-products').innerHTML = html;
+}
+
+// ── Top Customers ─────────────────────────────────────────────────────────────
+async function loadTopCustomers() {
+  const vf = vendorFilter('&');
+  const rows = await sbQuery('sales', 'customer,price', vf ? vf.slice(1) + '&customer=not.is.null' : 'customer=not.is.null');
+  if (!Array.isArray(rows)) return;
+  const map = {};
+  rows.forEach(r => {
+    if (!map[r.customer]) map[r.customer] = { spent: 0, count: 0 };
+    map[r.customer].spent += r.price || 0;
+    map[r.customer].count++;
+  });
+  const sorted = Object.entries(map).sort((a,b) => b[1].spent - a[1].spent).slice(0,10);
+  const html = tableHTML(
+    ['Customer', 'Total Spent', 'Purchases'],
+    sorted.map(([c, d]) => `<tr><td>${c}</td><td class="num accent">${fmtCredits(d.spent)}</td><td class="num">${fmt(d.count)}</td></tr>`)
+  );
+  document.getElementById('top-customers').innerHTML = html;
+}
+
+// ── Vendor Revenue ────────────────────────────────────────────────────────────
+async function loadVendorRevenue() {
+  const rows = await sbQuery('sales', 'vendor,price', 'vendor=not.is.null');
+  if (!Array.isArray(rows)) return;
+  const map = {};
+  rows.forEach(r => {
+    if (!map[r.vendor]) map[r.vendor] = { revenue: 0, count: 0 };
+    map[r.vendor].revenue += r.price || 0;
+    map[r.vendor].count++;
+  });
+  const sorted = Object.entries(map).sort((a,b) => b[1].revenue - a[1].revenue);
+  const html = tableHTML(
+    ['Vendor', 'Total Revenue', 'Sales Count'],
+    sorted.map(([v, d]) => `<tr><td>${v}</td><td class="num accent">${fmtCredits(d.revenue)}</td><td class="num">${fmt(d.count)}</td></tr>`)
+  );
+  document.getElementById('vendor-revenue').innerHTML = html;
+}
+
+// ── Inventory ─────────────────────────────────────────────────────────────────
+async function loadInventory() {
+  const vf = vendorFilter('&');
+  const rows = await sbQuery('inventory', 'product,total_units,restock,vendor', vf ? vf.slice(1) : '', 'total_units.asc');
+  if (!Array.isArray(rows)) return;
+
+  const processed = rows.map(r => {
+    const replenish = r.restock === -1 ? null : r.total_units - r.restock;
+    return {
+      ...r,
+      total_crates: formatCrates(r.total_units / 25, r.product),
+      maintain_crates: r.restock === -1 ? '' : formatCrates(r.restock / 25, r.product),
+      replenish,
+      replenish_crates: replenish == null ? '' : formatCrates(replenish / 25, r.product),
+    };
+  }).sort((a, b) => {
+    const rank = r => r.total_units <= 0 ? 0 : (r.restock !== -1 && r.total_units < r.restock ? 1 : 2);
+    return rank(a) - rank(b) || (a.replenish || 0) - (b.replenish || 0);
+  });
+
+  const html = tableHTML(
+    ['Product', 'Total Units', 'Total Crates', 'Maintain', 'Maintain Crates', 'Vendor', 'Replenish', 'Replenish Crates'],
+    processed.map(r => {
+      let cls = '';
+      if (r.total_units <= 0) cls = 'row-danger';
+      else if (r.restock !== -1 && r.total_units < r.restock) cls = 'row-warning';
+      const maintainDisplay = r.restock === -1 ? '' : r.restock;
+      const replenishDisplay = r.replenish != null ? r.replenish : '';
+      return `<tr class="${cls}">
+        <td>${r.product}</td>
+        <td class="num">${fmt(r.total_units)}</td>
+        <td class="num">${r.total_crates}</td>
+        <td class="num">${maintainDisplay}</td>
+        <td class="num">${r.maintain_crates}</td>
+        <td>${r.vendor}</td>
+        <td class="num">${replenishDisplay}</td>
+        <td class="num">${r.replenish_crates}</td>
+      </tr>`;
+    })
+  );
+  document.getElementById('inventory').innerHTML = html;
+}
+
+// ── Recent Sales ──────────────────────────────────────────────────────────────
+async function loadRecentSales() {
+  const vf = vendorFilter('&');
+  const filter = (vf ? vf.slice(1) + '&' : '') + 'sold_date=not.is.null';
+  const rows = await sbQuery('sales', 'sold_date,sold_time,product,crate_size,price,customer,vendor', filter, 'sold_date.desc,sold_time.desc', '25');
+  if (!Array.isArray(rows)) return;
+  const html = tableHTML(
+    ['Date', 'Time', 'Product', 'Crate Size', 'Price', 'Customer', 'Vendor'],
+    rows.map(r => `<tr>
+      <td>${r.sold_date || ''}</td>
+      <td>${r.sold_time || ''}</td>
+      <td>${r.product || ''}</td>
+      <td class="num">${r.crate_size || ''}</td>
+      <td class="num accent">${fmtCredits(r.price)}</td>
+      <td>${r.customer || ''}</td>
+      <td>${r.vendor || ''}</td>
+    </tr>`)
+  );
+  document.getElementById('recent-sales').innerHTML = html;
+}
+
+// ── Product List ──────────────────────────────────────────────────────────────
+async function loadProductList() {
+  const vf = vendorFilter('&');
+  const rows = await sbQuery('sales', 'product', vf ? vf.slice(1) + '&product=not.is.null' : 'product=not.is.null');
+  if (!Array.isArray(rows)) return;
+  const products = [...new Set(rows.map(r => r.product))].sort();
+  const sel = document.getElementById('product-select');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— select a product —</option>' + products.map(p => `<option value="${p}" ${p===current?'selected':''}>${p}</option>`).join('');
+  if (current) loadDrilldown();
+}
+
+// ── Product Drilldown ─────────────────────────────────────────────────────────
+async function loadDrilldown() {
+  const product = document.getElementById('product-select').value;
+  const range = document.getElementById('time-range').value;
+  const el = document.getElementById('drilldown-content');
+  if (!product) { el.innerHTML = ''; return; }
+
+  el.innerHTML = '<div class="loading"><span class="spinner"></span>Loading...</div>';
+
+  const df = dateFilter(range);
+  let filter = `product=eq.${encodeURIComponent(product)}`;
+  if (df) filter += df.slice(1);
+
+  const rows = await sbQuery('sales', 'sold_date,sold_time,price,crate_size,customer,vendor', filter, 'sold_date.asc');
+  if (!Array.isArray(rows)) { el.innerHTML = '<div class="empty">No data.</div>'; return; }
+
+  const totalRev = rows.reduce((s, r) => s + (r.price || 0), 0);
+  const totalUnits = rows.reduce((s, r) => s + (r.crate_size || 0), 0);
+
+  // Revenue by date for chart
+  const dateMap = {};
+  rows.forEach(r => { dateMap[r.sold_date] = (dateMap[r.sold_date] || 0) + (r.price || 0); });
+  const chartLabels = Object.keys(dateMap).sort();
+  const chartData = chartLabels.map(d => dateMap[d]);
+
+  // Top customers
+  const custMap = {};
+  rows.forEach(r => {
+    if (!custMap[r.customer]) custMap[r.customer] = { spent: 0, count: 0 };
+    custMap[r.customer].spent += r.price || 0;
+    custMap[r.customer].count++;
+  });
+  const topCusts = Object.entries(custMap).sort((a,b) => b[1].spent - a[1].spent).slice(0,10);
+
+  // Vendor breakdown
+  const vendMap = {};
+  rows.forEach(r => {
+    if (!vendMap[r.vendor]) vendMap[r.vendor] = { revenue: 0, count: 0 };
+    vendMap[r.vendor].revenue += r.price || 0;
+    vendMap[r.vendor].count++;
+  });
+
+  el.innerHTML = `
+    <div class="drilldown-kpis">
+      <div class="drilldown-kpi"><div class="kpi-label">Total Revenue</div><div class="kpi-value">${fmtCredits(totalRev)}</div></div>
+      <div class="drilldown-kpi"><div class="kpi-label">Number of Sales</div><div class="kpi-value">${fmt(rows.length)}</div></div>
+      <div class="drilldown-kpi"><div class="kpi-label">Units Sold</div><div class="kpi-value">${fmt(totalUnits)}</div></div>
+    </div>
+    <div style="margin-bottom:1.2rem;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em;">Revenue Over Time</div>
+      <div class="chart-wrap"><canvas id="drilldown-chart"></canvas></div>
+    </div>
+    <div class="two-col" style="margin-bottom:0;">
+      <div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em;">Top Customers</div>
+        ${tableHTML(['Customer','Purchases','Total Spent'], topCusts.map(([c,d]) => `<tr><td>${c}</td><td class="num">${fmt(d.count)}</td><td class="num accent">${fmtCredits(d.spent)}</td></tr>`))}
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em;">Sales by Vendor</div>
+        ${tableHTML(['Vendor','Sales','Revenue'], Object.entries(vendMap).sort((a,b)=>b[1].revenue-a[1].revenue).map(([v,d]) => `<tr><td>${v}</td><td class="num">${fmt(d.count)}</td><td class="num accent">${fmtCredits(d.revenue)}</td></tr>`))}
+      </div>
+    </div>
+    <div style="margin-top:1.2rem;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em;">Full Sales History</div>
+      ${tableHTML(['Date','Time','Crate Size','Price','Customer','Vendor'],
+        [...rows].reverse().map(r => `<tr>
+          <td>${r.sold_date||''}</td><td>${r.sold_time||''}</td>
+          <td class="num">${r.crate_size||''}</td>
+          <td class="num accent">${fmtCredits(r.price)}</td>
+          <td>${r.customer||''}</td><td>${r.vendor||''}</td>
+        </tr>`)
+      )}
+    </div>
+  `;
+
+  // Render drilldown chart
+  const dctx = document.getElementById('drilldown-chart').getContext('2d');
+  new Chart(dctx, {
+    type: 'bar',
+    data: {
+      labels: chartLabels,
+      datasets: [{ label: 'Revenue', data: chartData, backgroundColor: 'rgba(212,245,74,0.3)', borderColor: '#d4f54a', borderWidth: 1 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#6b6f7a', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: 10 }, grid: { color: '#2a2d35' } },
+        y: { ticks: { color: '#6b6f7a', font: { family: 'DM Mono', size: 10 }, callback: v => fmt(v) }, grid: { color: '#2a2d35' } }
+      }
+    }
+  });
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadAll();
+</script>
+</body>
+</html>
