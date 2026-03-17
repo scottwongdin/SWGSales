@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>SWG Vendor</title>
+<title>SWG Crafter</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
@@ -162,11 +162,11 @@
   <!-- Header -->
   <header>
     <div>
-      <div class="logo">SWG <span>Vendor</span></div>
+      <div class="logo">SWG <span>Crafter</span></div>
       <div class="header-sub">Sales, Inventory & Factory</div>
     </div>
     <div class="nav-bar">
-      <button class="nav-tab active" onclick="switchNav('dashboard')">📊 Dashboard</button>
+      <button class="nav-tab active" onclick="switchNav('dashboard')">📊 Sales</button>
       <button class="nav-tab" onclick="switchNav('inventory-mgmt')">📦 Inventory</button>
       <button class="nav-tab" onclick="switchNav('factory')">🏭 Factory</button>
     </div>
@@ -180,6 +180,8 @@
         <option value="">All Vendors</option>
         <option value="Cafe Eponine">Cafe Eponine</option>
         <option value="Brasserie Eponine">Brasserie Eponine</option>
+        <option value="Cafe Eponine for Pets">Cafe Eponine for Pets</option>
+        <option value="Brasserie Eponine for Pets">Brasserie Eponine for Pets</option>
       </select>
       <button class="btn-accent" onclick="loadAll()">↻ Refresh</button>
     </div>
@@ -216,16 +218,6 @@
       <div id="vendor-revenue"><div class="loading"><span class="spinner"></span>Loading...</div></div>
     </div>
 
-    <!-- Inventory -->
-    <div class="section">
-      <div class="section-title">📦 Inventory Summary</div>
-      <div id="inventory"><div class="loading"><span class="spinner"></span>Loading...</div></div>
-      <div class="legend">
-        <span><span class="legend-dot" style="background:var(--danger)"></span>Out of stock or negative</span>
-        <span><span class="legend-dot" style="background:var(--warning)"></span>Below restock threshold</span>
-      </div>
-    </div>
-
     <!-- Recent Sales -->
     <div class="section">
       <div class="section-title">🕐 Recent Sales</div>
@@ -255,11 +247,16 @@
 
     <div class="section">
       <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
-        📦 Inventory Management
+        📦 Inventory
         <button class="btn-accent" onclick="showAddForm()">+ Add Product</button>
       </div>
 
-      <!-- Add / Edit Form -->
+      <!-- Search -->
+      <div style="margin-bottom:1rem;">
+        <input type="text" id="inv-search" placeholder="🔍 Search products..." style="width:100%;max-width:400px;" />
+      </div>
+
+      <!-- Add Form -->
       <div id="inv-form" style="display:none;background:var(--bg);border:1px solid var(--accent);border-radius:var(--radius);padding:1.2rem;margin-bottom:1.5rem;">
         <div style="font-family:var(--display);font-weight:700;font-size:14px;margin-bottom:1rem;" id="inv-form-title">Add Product</div>
         <input type="hidden" id="inv-edit-id" />
@@ -271,6 +268,8 @@
             <select id="inv-vendor">
               <option value="Cafe Eponine">Cafe Eponine</option>
               <option value="Brasserie Eponine">Brasserie Eponine</option>
+              <option value="Cafe Eponine for Pets">Cafe Eponine for Pets</option>
+              <option value="Brasserie Eponine for Pets">Brasserie Eponine for Pets</option>
               <option value="Other">Other</option>
             </select>
           </div>
@@ -282,8 +281,12 @@
         <div id="inv-form-error" style="font-size:12px;color:var(--danger);margin-top:8px;"></div>
       </div>
 
-      <!-- Inventory Table -->
-      <div id="inv-table"><div class="loading"><span class="spinner"></span>Loading...</div></div>
+      <!-- Combined Inventory Table -->
+      <div id="inventory"><div class="loading"><span class="spinner"></span>Loading...</div></div>
+      <div class="legend" style="margin-top:10px;">
+        <span><span class="legend-dot" style="background:var(--danger)"></span>Out of stock or negative</span>
+        <span><span class="legend-dot" style="background:var(--warning)"></span>Below restock threshold</span>
+      </div>
     </div>
 
   </div><!-- end inventory panel -->
@@ -332,60 +335,77 @@ function switchNav(name) {
   document.getElementById('panel-' + name).classList.add('active');
   if (name === 'dashboard') loadAll();
   if (name === 'factory') initFactory();
-  if (name === 'inventory-mgmt') loadInvTable();
+  if (name === 'inventory-mgmt') loadInventory();
 }
 
 // ══════════════════════════════════════════════════════════════════ INVENTORY MGMT
 
 let invData = [];
+let invAllRowsAll = [];
+let invAllRows = [];
 
-async function loadInvTable() {
-  document.getElementById('inv-table').innerHTML = '<div class="loading"><span class="spinner"></span>Loading...</div>';
-  invData = await sbFetch('inventory?select=product_id,product,total_units,restock,vendor&order=product.asc');
-  renderInvTable();
-}
-
-function renderInvTable() {
-  if (!Array.isArray(invData) || !invData.length) {
-    document.getElementById('inv-table').innerHTML = '<div class="empty">No inventory records. Add one above.</div>';
-    return;
-  }
-  const rows = invData.map(r => `
-    <tr>
-      <td class="editable" onclick="editCell(this, ${r.product_id}, 'product', '${escAttr(r.product)}')">${r.product}</td>
-      <td class="editable num" onclick="editCell(this, ${r.product_id}, 'total_units', '${r.total_units}')">${fmt(r.total_units)}</td>
-      <td class="editable num" onclick="editCell(this, ${r.product_id}, 'restock', '${r.restock}')">${r.restock === -1 ? '—' : fmt(r.restock)}</td>
-      <td class="editable" onclick="editCellSelect(this, ${r.product_id}, 'vendor', '${escAttr(r.vendor)}')">${r.vendor}</td>
-      <td style="text-align:right;"><button class="btn btn-sm btn-danger" onclick="deleteInvRow(${r.product_id}, '${escAttr(r.product)}')">Delete</button></td>
-    </tr>`);
-  document.getElementById('inv-table').innerHTML = tableHTML(['Product','Total Units','Maintain','Vendor',''], rows);
+async function loadInventory() {
+  invPage = 0;
+  const filter = vf('&');
+  const rows = await sbFetch(`inventory?select=product_id,product,total_units,restock,vendor${filter ? '&'+filter.slice(1) : ''}&order=total_units.asc`);
+  if (!Array.isArray(rows)) return;
+  invAllRowsAll = rows.map(r => ({
+    ...r,
+    replenish: r.restock === -1 ? null : r.total_units - r.restock
+  })).sort((a,b) => {
+    const rank = r => r.total_units<=0 ? 0 : (r.restock!==-1 && r.total_units<r.restock ? 1 : 2);
+    return rank(a)-rank(b) || (a.replenish||0)-(b.replenish||0);
+  });
+  // Apply any active search filter
+  const search = document.getElementById('inv-search') ? document.getElementById('inv-search').value.toLowerCase() : '';
+  invAllRows = search ? invAllRowsAll.filter(r => (r.product||'').toLowerCase().includes(search)) : invAllRowsAll;
+  renderInventoryPage();
 }
 
 function escAttr(s) { return (s||'').replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
 
-function editCell(td, id, field, current) {
+function editInvCell(td, id, field, current) {
   const input = document.createElement('input');
   input.className = 'cell-input';
-  input.type = field === 'product' ? 'text' : 'number';
-  input.value = current;
+  const isTotalUnits = field === 'total_units';
+  input.type = 'text';
+  input.placeholder = isTotalUnits ? 'e.g. +250 or -50' : '';
+  input.value = isTotalUnits ? '' : current;
   td.innerHTML = '';
   td.appendChild(input);
   input.focus();
-  input.select();
   async function save() {
-    const val = field === 'product' ? input.value.trim() : parseInt(input.value);
-    if (field === 'product' && !val) { loadInvTable(); return; }
+    let val;
+    if (isTotalUnits) {
+      const raw = input.value.trim();
+      if (!raw) { loadInventory(); return; }
+      const currentNum = parseInt(String(current).replace(/,/g, ''));
+      if (raw.startsWith('+')) {
+        val = currentNum + parseInt(raw.slice(1));
+      } else if (raw.startsWith('-')) {
+        val = currentNum - parseInt(raw.slice(1));
+      } else {
+        val = parseInt(raw);
+      }
+      if (isNaN(val)) { loadInventory(); return; }
+    } else if (field === 'product') {
+      val = input.value.trim();
+      if (!val) { loadInventory(); return; }
+    } else {
+      val = parseInt(input.value);
+      if (isNaN(val)) { loadInventory(); return; }
+    }
     await sbPatch('inventory', `product_id=eq.${id}`, { [field]: val });
-    await loadInvTable();
+    await loadInventory();
   }
   input.addEventListener('blur', save);
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') loadInvTable(); });
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') loadInventory(); });
 }
 
-function editCellSelect(td, id, field, current) {
+function editInvCellSelect(td, id, field, current) {
   const select = document.createElement('select');
   select.className = 'cell-input';
-  ['Cafe Eponine','Brasserie Eponine','Other'].forEach(v => {
+  ['Cafe Eponine','Brasserie Eponine','Cafe Eponine for Pets','Brasserie Eponine for Pets','Other'].forEach(v => {
     const opt = document.createElement('option');
     opt.value = v; opt.textContent = v;
     if (v === current) opt.selected = true;
@@ -396,7 +416,7 @@ function editCellSelect(td, id, field, current) {
   select.focus();
   async function save() {
     await sbPatch('inventory', `product_id=eq.${id}`, { [field]: select.value });
-    await loadInvTable();
+    await loadInventory();
   }
   select.addEventListener('blur', save);
   select.addEventListener('change', () => select.blur());
@@ -405,7 +425,7 @@ function editCellSelect(td, id, field, current) {
 async function deleteInvRow(id, product) {
   if (!confirm(`Delete "${product}"?`)) return;
   await fetch(`${SUPABASE_URL}/rest/v1/inventory?product_id=eq.${id}`, { method: 'DELETE', headers: SB_HEADERS });
-  await loadInvTable();
+  await loadInventory();
 }
 
 function showAddForm() {
@@ -439,7 +459,7 @@ async function saveInventoryRow() {
     body: JSON.stringify({ product, total_units, restock, vendor })
   });
   hideInvForm();
-  await loadInvTable();
+  await loadInventory();
 }
 
 async function sbPatch(table, filter, data) {
@@ -463,7 +483,7 @@ function switchInnerTab(name) {
 
 async function sbFetch(path) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Range-Unit': 'items', 'Range': '0-' }
   });
   return res.json();
 }
@@ -494,35 +514,44 @@ function tableHTML(headers, rows) {
 let revenueChart = null;
 
 async function loadAll() {
-  await Promise.all([loadKPIs(), loadRevenueChart(), loadTopProducts(), loadTopCustomers(), loadVendorRevenue(), loadInventory(), loadRecentSales(), loadProductList()]);
+  await Promise.all([loadKPIs(), loadRevenueChart(), loadTopProducts(), loadTopCustomers(), loadVendorRevenue(), loadRecentSales(), loadProductList()]);
 }
 
 async function loadKPIs() {
-  const filter = vf('&');
-  const rows = await sbFetch(`sales?select=price,product,customer${filter ? '&' + filter.slice(1) : ''}`);
-  if (!Array.isArray(rows)) return;
-  document.getElementById('kpi-revenue').textContent = fmtCr(rows.reduce((s,r) => s+(r.price||0), 0));
-  document.getElementById('kpi-sales').textContent = fmt(rows.length);
-  document.getElementById('kpi-products').textContent = fmt(new Set(rows.map(r=>r.product)).size);
-  document.getElementById('kpi-customers').textContent = fmt(new Set(rows.map(r=>r.customer)).size);
+  const v = vendor() || null;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_sales_summary`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vendor_filter: v })
+  });
+  const data = await res.json();
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return;
+  document.getElementById('kpi-revenue').textContent = fmtCr(row.total_revenue);
+  document.getElementById('kpi-sales').textContent = fmt(row.total_sales);
+  document.getElementById('kpi-products').textContent = fmt(row.unique_products);
+  document.getElementById('kpi-customers').textContent = fmt(row.unique_customers);
 }
 
 async function loadRevenueChart() {
-  const filter = vf('&');
-  const rows = await sbFetch(`sales?select=sold_date,price${filter ? '&'+filter.slice(1) : ''}&sold_date=not.is.null&order=sold_date.asc`);
+  const v = vendor() || null;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_revenue_by_date`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vendor_filter: v })
+  });
+  const rows = await res.json();
   if (!Array.isArray(rows) || !rows.length) return;
-  const map = {};
-  rows.forEach(r => { map[r.sold_date] = (map[r.sold_date]||0) + (r.price||0); });
-  const labels = Object.keys(map).sort();
-  const revenue = labels.map(d => map[d]);
-  const avg = revenue.map((_,i) => { const s = revenue.slice(Math.max(0,i-6),i+1); return Math.round(s.reduce((a,b)=>a+b,0)/s.length); });
+  const labels = rows.map(r => r.sold_date);
+  const revenue = rows.map(r => r.revenue);
+  const avg = revenue.map((_,i) => { const s = revenue.slice(Math.max(0,i-9),i+1); return Math.round(s.reduce((a,b)=>a+b,0)/s.length); });
   const ctx = document.getElementById('revenue-chart').getContext('2d');
   if (revenueChart) revenueChart.destroy();
   revenueChart = new Chart(ctx, {
     type: 'line',
     data: { labels, datasets: [
       { label: 'Revenue', data: revenue, borderColor: '#d4f54a', backgroundColor: 'rgba(212,245,74,0.08)', tension: 0.3, pointRadius: 2, borderWidth: 2 },
-      { label: '7-Day Avg', data: avg, borderColor: '#4af5a0', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0, borderWidth: 2, borderDash: [4,4] }
+      { label: '10-Day Avg', data: avg, borderColor: '#4af5a0', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0, borderWidth: 2, borderDash: [4,4] }
     ]},
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -536,71 +565,147 @@ async function loadRevenueChart() {
 }
 
 async function loadTopProducts() {
-  const filter = vf('&');
-  const rows = await sbFetch(`sales?select=product,price,crate_size${filter ? '&'+filter.slice(1) : ''}&product=not.is.null`);
+  const v = vendor() || null;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_top_products`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vendor_filter: v })
+  });
+  const rows = await res.json();
   if (!Array.isArray(rows)) return;
-  const map = {};
-  rows.forEach(r => { if(!map[r.product]) map[r.product]={revenue:0,units:0}; map[r.product].revenue+=r.price||0; map[r.product].units+=r.crate_size||0; });
-  const sorted = Object.entries(map).sort((a,b)=>b[1].revenue-a[1].revenue).slice(0,10);
-  document.getElementById('top-products').innerHTML = tableHTML(['Product','Revenue','Units'], sorted.map(([p,d])=>`<tr><td>${p}</td><td class="num accent">${fmtCr(d.revenue)}</td><td class="num">${fmt(d.units)}</td></tr>`));
+  document.getElementById('top-products').innerHTML = tableHTML(
+    ['Product','Revenue','Units'],
+    rows.map(r => `<tr><td>${r.product}</td><td class="num accent">${fmtCr(r.total_revenue)}</td><td class="num">${fmt(r.units_sold)}</td></tr>`)
+  );
 }
 
 async function loadTopCustomers() {
-  const filter = vf('&');
-  const rows = await sbFetch(`sales?select=customer,price${filter ? '&'+filter.slice(1) : ''}&customer=not.is.null`);
+  const v = vendor() || null;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_top_customers`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vendor_filter: v })
+  });
+  const rows = await res.json();
   if (!Array.isArray(rows)) return;
-  const map = {};
-  rows.forEach(r => { if(!map[r.customer]) map[r.customer]={spent:0,count:0}; map[r.customer].spent+=r.price||0; map[r.customer].count++; });
-  const sorted = Object.entries(map).sort((a,b)=>b[1].spent-a[1].spent).slice(0,10);
-  document.getElementById('top-customers').innerHTML = tableHTML(['Customer','Total Spent','Purchases'], sorted.map(([c,d])=>`<tr><td>${c}</td><td class="num accent">${fmtCr(d.spent)}</td><td class="num">${fmt(d.count)}</td></tr>`));
+  document.getElementById('top-customers').innerHTML = tableHTML(
+    ['Customer','Total Spent','Purchases'],
+    rows.map(r => `<tr><td>${r.customer}</td><td class="num accent">${fmtCr(r.total_spent)}</td><td class="num">${fmt(r.num_purchases)}</td></tr>`)
+  );
 }
 
 async function loadVendorRevenue() {
-  const rows = await sbFetch('sales?select=vendor,price&vendor=not.is.null');
-  if (!Array.isArray(rows)) return;
-  const map = {};
-  rows.forEach(r => { if(!map[r.vendor]) map[r.vendor]={revenue:0,count:0}; map[r.vendor].revenue+=r.price||0; map[r.vendor].count++; });
-  const sorted = Object.entries(map).sort((a,b)=>b[1].revenue-a[1].revenue);
-  document.getElementById('vendor-revenue').innerHTML = tableHTML(['Vendor','Total Revenue','Sales Count'], sorted.map(([v,d])=>`<tr><td>${v}</td><td class="num accent">${fmtCr(d.revenue)}</td><td class="num">${fmt(d.count)}</td></tr>`));
-}
-
-async function loadInventory() {
-  const filter = vf('&');
-  const rows = await sbFetch(`inventory?select=product,total_units,restock,vendor${filter ? '&'+filter.slice(1) : ''}&order=total_units.asc`);
-  if (!Array.isArray(rows)) return;
-  const processed = rows.map(r => ({
-    ...r,
-    replenish: r.restock === -1 ? null : r.total_units - r.restock
-  })).sort((a,b) => {
-    const rank = r => r.total_units<=0 ? 0 : (r.restock!==-1 && r.total_units<r.restock ? 1 : 2);
-    return rank(a)-rank(b) || (a.replenish||0)-(b.replenish||0);
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_revenue_by_vendor`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
   });
-  document.getElementById('inventory').innerHTML = tableHTML(
-    ['Product','Total Units','Total Crates','Maintain','Maintain Crates','Vendor','Replenish','Replenish Crates'],
-    processed.map(r => {
-      const cls = r.total_units<=0 ? 'row-danger' : (r.restock!==-1 && r.total_units<r.restock ? 'row-warning' : '');
-      return `<tr class="${cls}">
-        <td>${r.product}</td>
-        <td class="num">${fmt(r.total_units)}</td>
-        <td class="num">${formatCrates(r.total_units/25, r.product)}</td>
-        <td class="num">${r.restock===-1?'':r.restock}</td>
-        <td class="num">${r.restock===-1?'':formatCrates(r.restock/25, r.product)}</td>
-        <td>${r.vendor}</td>
-        <td class="num">${r.replenish!=null?r.replenish:''}</td>
-        <td class="num">${r.replenish!=null?formatCrates(r.replenish/25,r.product):''}</td>
-      </tr>`;
-    })
+  const rows = await res.json();
+  if (!Array.isArray(rows)) return;
+  document.getElementById('vendor-revenue').innerHTML = tableHTML(
+    ['Vendor','Total Revenue','Sales Count'],
+    rows.map(r => `<tr><td>${r.vendor}</td><td class="num accent">${fmtCr(r.total_revenue)}</td><td class="num">${fmt(r.num_sales)}</td></tr>`)
   );
 }
+
+let invPage = 0;
+const INV_PAGE_SIZE = 20;
+
+function renderInventoryPage() {
+  const total = invAllRows.length;
+  const totalPages = Math.ceil(total / INV_PAGE_SIZE);
+  const start = invPage * INV_PAGE_SIZE;
+  const pageRows = invAllRows.slice(start, start + INV_PAGE_SIZE);
+
+  const tableRows = pageRows.map(r => {
+    const cls = r.total_units<=0 ? 'row-danger' : (r.restock!==-1 && r.total_units<r.restock ? 'row-warning' : '');
+    return `<tr class="${cls}">
+      <td class="editable" onclick="editInvCell(this, ${r.product_id}, 'product', '${escAttr(r.product)}')">${r.product}</td>
+      <td class="editable num" onclick="editInvCell(this, ${r.product_id}, 'total_units', ${r.total_units})">${fmt(r.total_units)}</td>
+      <td class="num">${formatCrates(r.total_units/25, r.product)}</td>
+      <td class="editable num" onclick="editInvCell(this, ${r.product_id}, 'restock', '${r.restock}')">${r.restock===-1?'—':fmt(r.restock)}</td>
+      <td class="num">${r.restock===-1?'':formatCrates(r.restock/25, r.product)}</td>
+      <td class="editable" onclick="editInvCellSelect(this, ${r.product_id}, 'vendor', '${escAttr(r.vendor)}')">${r.vendor}</td>
+      <td class="num">${r.replenish!=null?r.replenish:''}</td>
+      <td class="num">${r.replenish!=null?formatCrates(r.replenish/25,r.product):''}</td>
+      <td style="text-align:right;"><button class="btn btn-sm btn-danger" onclick="deleteInvRow(${r.product_id}, '${escAttr(r.product)}')">Delete</button></td>
+    </tr>`;
+  });
+
+  const pagination = totalPages > 1 ? `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:1rem;font-size:12px;color:var(--muted);">
+      <span>Showing ${start+1}–${Math.min(start+INV_PAGE_SIZE, total)} of ${total}</span>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-sm" onclick="invChangePage(-1)" ${invPage===0?'disabled':''}>← Prev</button>
+        <span style="padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;">Page ${invPage+1} of ${totalPages}</span>
+        <button class="btn btn-sm" onclick="invChangePage(1)" ${invPage>=totalPages-1?'disabled':''}>Next →</button>
+      </div>
+    </div>` : '';
+
+  document.getElementById('inventory').innerHTML =
+    tableHTML(['Product','Total Units','Total Crates','Maintain','Maintain Crates','Vendor','Replenish','Replenish Crates',''], tableRows) + pagination;
+}
+
+function filterInventory() {
+  const search = document.getElementById('inv-search').value.toLowerCase();
+  console.log('Search:', search);
+  console.log('invAllRowsAll length:', invAllRowsAll.length);
+  invAllRows = invAllRowsAll.filter(r => (r.product||'').toLowerCase().includes(search));
+  console.log('filtered length:', invAllRows.length);
+  invPage = 0;
+  renderInventoryPage();
+}
+
+function invChangePage(dir) {
+  const totalPages = Math.ceil(invAllRows.length / INV_PAGE_SIZE);
+  invPage = Math.max(0, Math.min(invPage + dir, totalPages - 1));
+  renderInventoryPage();
+}
+
+let salesPage = 0;
+const SALES_PAGE_SIZE = 20;
+let salesAllRows = [];
 
 async function loadRecentSales() {
+  salesPage = 0;
   const filter = vf('&');
-  const rows = await sbFetch(`sales?select=sold_date,sold_time,product,crate_size,price,customer,vendor${filter?'&'+filter.slice(1):''}&sold_date=not.is.null&order=sold_date.desc,sold_time.desc&limit=25`);
+  const threeDaysAgo = new Date();
+  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+  const dateStr = threeDaysAgo.toISOString().slice(0, 10);
+  const rows = await sbFetch(`sales?select=sold_date,sold_time,product,crate_size,price,customer,vendor${filter?'&'+filter.slice(1):''}&sold_date=gte.${dateStr}&order=sold_date.desc,sold_time.desc`);
   if (!Array.isArray(rows)) return;
-  document.getElementById('recent-sales').innerHTML = tableHTML(
-    ['Date','Time','Product','Crate Size','Price','Customer','Vendor'],
-    rows.map(r=>`<tr><td>${r.sold_date||''}</td><td>${r.sold_time||''}</td><td>${r.product||''}</td><td class="num">${r.crate_size||''}</td><td class="num accent">${fmtCr(r.price)}</td><td>${r.customer||''}</td><td>${r.vendor||''}</td></tr>`)
+  salesAllRows = rows;
+  renderSalesPage();
+}
+
+function renderSalesPage() {
+  const total = salesAllRows.length;
+  const totalPages = Math.ceil(total / SALES_PAGE_SIZE);
+  const start = salesPage * SALES_PAGE_SIZE;
+  const pageRows = salesAllRows.slice(start, start + SALES_PAGE_SIZE);
+
+  const tableRows = pageRows.map(r =>
+    `<tr><td>${r.sold_date||''}</td><td>${r.sold_time||''}</td><td>${r.product||''}</td><td class="num">${r.crate_size||''}</td><td class="num accent">${fmtCr(r.price)}</td><td>${r.customer||''}</td><td>${r.vendor||''}</td></tr>`
   );
+
+  const pagination = totalPages > 1 ? `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:1rem;font-size:12px;color:var(--muted);">
+      <span>Showing ${start+1}–${Math.min(start+SALES_PAGE_SIZE, total)} of ${total}</span>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-sm" onclick="salesChangePage(-1)" ${salesPage===0?'disabled':''}>← Prev</button>
+        <span style="padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;">Page ${salesPage+1} of ${totalPages}</span>
+        <button class="btn btn-sm" onclick="salesChangePage(1)" ${salesPage>=totalPages-1?'disabled':''}>Next →</button>
+      </div>
+    </div>` : '';
+
+  document.getElementById('recent-sales').innerHTML =
+    tableHTML(['Date','Time','Product','Crate Size','Price','Customer','Vendor'], tableRows) + pagination;
+}
+
+function salesChangePage(dir) {
+  const totalPages = Math.ceil(salesAllRows.length / SALES_PAGE_SIZE);
+  salesPage = Math.max(0, Math.min(salesPage + dir, totalPages - 1));
+  renderSalesPage();
 }
 
 async function loadProductList() {
@@ -947,6 +1052,9 @@ document.getElementById('history-container').addEventListener('click', e => {
 
 // ══════════════════════════════════════════════════════════════════ INIT
 loadAll();
+loadInventory();
+
+document.getElementById('inv-search').addEventListener('input', filterInventory);
 </script>
 </body>
 </html>

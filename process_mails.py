@@ -37,10 +37,15 @@ def extract_sold_datetime(body):
 
 
 def extract_vendor(body):
-    """Identify which vendor sold the item — Cafe Eponine or Brasserie Eponine."""
-    if "cafe eponine" in body.lower():
+    """Identify which vendor sold the item."""
+    body_lower = body.lower()
+    if "cafe eponine for pets" in body_lower:
+        return "Cafe Eponine for Pets"
+    elif "brasserie eponine for pets" in body_lower:
+        return "Brasserie Eponine for Pets"
+    elif "cafe eponine" in body_lower:
         return "Cafe Eponine"
-    elif "brasserie eponine" in body.lower():
+    elif "brasserie eponine" in body_lower:
         return "Brasserie Eponine"
     return "Other"
 
