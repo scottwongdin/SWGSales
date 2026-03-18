@@ -648,10 +648,7 @@ function renderInventoryPage() {
 
 function filterInventory() {
   const search = document.getElementById('inv-search').value.toLowerCase();
-  console.log('Search:', search);
-  console.log('invAllRowsAll length:', invAllRowsAll.length);
   invAllRows = invAllRowsAll.filter(r => (r.product||'').toLowerCase().includes(search));
-  console.log('filtered length:', invAllRows.length);
   invPage = 0;
   renderInventoryPage();
 }
@@ -765,8 +762,9 @@ async function initFactory() {
   if (factoryInitialized) return;
   factoryInitialized = true;
   await loadFactoryState();
-  if (state.lines.length === 0) addLine();
-  else { resumeTimers(); renderLines(); }
+  if (state.lines.length === 0 && !state.loadFailed) addLine();
+  else if (!state.loadFailed) { resumeTimers(); renderLines(); }
+  else { renderLines(); }
 }
 
 async function loadFactoryState() {
@@ -777,25 +775,48 @@ async function loadFactoryState() {
     ]);
     const lines = await linesRes.json();
     const history = await histRes.json();
+    if (!Array.isArray(lines) || !Array.isArray(history)) {
+      console.error('Unexpected response from Supabase:', lines, history);
+      state.loadFailed = true;
+      return;
+    }
+    state.loadFailed = false;
     state.lines = lines.map(l => ({ id: l.id, name: l.name, colorIdx: l.color_idx, product: l.product||'', tpu: l.tpu, unit: l.unit||'sec', qty: l.qty, status: l.status||'idle', startedAt: l.started_at, totalSec: l.total_sec||0 }));
     state.history = history.map(h => ({ id: h.id, product: h.product||'', tpu: h.tpu, unit: h.unit||'sec', qty: h.qty, createdAt: h.created_at }));
   } catch(e) {
     toast('⚠ Could not connect to Supabase.');
-    state = { lines: [], history: [] };
+    state.loadFailed = true;
   }
 }
 
 async function saveLines() {
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/factory_lines?id=not.is.null`, { method: 'DELETE', headers: SB_HEADERS });
-    if (state.lines.length > 0) {
-      await fetch(`${SUPABASE_URL}/rest/v1/factory_lines`, {
-        method: 'POST',
-        headers: { ...SB_HEADERS, 'Prefer': 'resolution=merge-duplicates' },
-        body: JSON.stringify(state.lines.map((l,i) => ({ id: l.id, name: l.name, color_idx: l.colorIdx, product: l.product||'', tpu: l.tpu, unit: l.unit||'sec', qty: l.qty, status: l.status||'idle', started_at: l.startedAt, total_sec: l.totalSec||0, sort_order: i })))
-      });
-    }
+    if (state.lines.length === 0 || state.loadFailed) return;
+    const payload = state.lines.map((l,i) => ({
+      id: l.id, name: l.name, color_idx: l.colorIdx,
+      product: l.product||'',
+      tpu: l.tpu !== '' && l.tpu != null ? parseFloat(l.tpu) : null,
+      unit: l.unit||'sec',
+      qty: l.qty !== '' && l.qty != null ? parseInt(l.qty) : null,
+      status: l.status||'idle',
+      started_at: l.startedAt || null,
+      total_sec: l.totalSec || 0,
+      sort_order: i
+    }));
+    await fetch(`${SUPABASE_URL}/rest/v1/factory_lines`, {
+      method: 'POST',
+      headers: { ...SB_HEADERS, 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify(payload)
+    });
   } catch(e) { console.error('Failed to save lines:', e); }
+}
+
+async function deleteLine(id) {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/factory_lines?id=eq.${id}`, {
+      method: 'DELETE', headers: SB_HEADERS
+    });
+  } catch(e) { console.error('Failed to delete line:', e); }
 }
 
 async function saveHistory() {
@@ -832,7 +853,9 @@ function addLine() {
 function removeLine(id) {
   if (timers[id]) { clearInterval(timers[id]); delete timers[id]; }
   state.lines = state.lines.filter(l=>l.id!==id);
-  saveState(); renderLines();
+  deleteLine(id);
+  saveLines();
+  renderLines();
 }
 
 function renameLine(id, name) {
