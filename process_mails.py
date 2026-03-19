@@ -1,10 +1,20 @@
 import os
 import shutil
 import psycopg2
+import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import re
-from config import DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_PORT
+
+# Allow passing a config file as argument e.g. python process_mails.py config_test
+config_module = sys.argv[1] if len(sys.argv) > 1 else 'config'
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+config = __import__(config_module)
+DB_HOST = config.DB_HOST
+DB_NAME = config.DB_NAME
+DB_USER = config.DB_USER
+DB_PASSWORD = config.DB_PASSWORD
+DB_PORT = config.DB_PORT
 
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logging.txt")
 
@@ -146,8 +156,8 @@ def import_mail_files(directory):
                 price = extract_price(body)
                 customer = extract_customer(body)
                 vendor = extract_vendor(body)
-                # If the product is a supplement, always set crate_size to 1
-                if product and "supplement" in product.lower():
+                # If the product is a supplement or substitute, always set crate_size to 1
+                if product and any(x in product.lower() for x in ["supplement", "substitute"]):
                     crate_size = 1
                 else:
                     crate_size = extract_quantity(body)
@@ -161,6 +171,12 @@ def import_mail_files(directory):
                     UPDATE inventory SET total_units = total_units - %s
                     WHERE product = %s AND vendor = %s
                 """, (crate_size, product, vendor))
+                # If crate_size is exactly 25, also decrement crate_count by 1
+                if crate_size == 25:
+                    cur.execute("""
+                        UPDATE inventory SET crate_count = crate_count - 1
+                        WHERE product = %s AND vendor = %s AND crate_count > 0
+                    """, (product, vendor))
                 # If no matching row was found, insert a new row with total_units = -crate_size
                 if cur.rowcount == 0:
                     cur.execute("""

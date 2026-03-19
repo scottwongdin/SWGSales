@@ -1,8 +1,18 @@
 import psycopg2
 import csv
 import os
+import sys
 from datetime import datetime
-from config import DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_PORT
+
+# Allow passing a config file as argument e.g. python backup.py config_test
+config_module = sys.argv[1] if len(sys.argv) > 1 else 'config'
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+config = __import__(config_module)
+DB_HOST = config.DB_HOST
+DB_NAME = config.DB_NAME
+DB_USER = config.DB_USER
+DB_PASSWORD = config.DB_PASSWORD
+DB_PORT = config.DB_PORT
 
 BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backups")
 
