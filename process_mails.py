@@ -114,6 +114,11 @@ def import_mail_files(directory):
     conn = get_conn()
     cur = conn.cursor()
 
+    # Reset sequences to avoid primary key conflicts
+    cur.execute("SELECT setval('sales_mail_id_seq', (SELECT COALESCE(MAX(mail_id), 1) FROM sales))")
+    cur.execute("SELECT setval('inventory_product_id_seq', (SELECT COALESCE(MAX(product_id), 1) FROM inventory))")
+    conn.commit()
+
     files = [f for f in os.listdir(directory) if f.endswith(".mail")]
 
     if not files:
@@ -171,8 +176,9 @@ def import_mail_files(directory):
                     UPDATE inventory SET total_units = total_units - %s
                     WHERE product = %s AND vendor = %s
                 """, (crate_size, product, vendor))
-                # If crate_size is exactly 25, also decrement crate_count by 1
-                if crate_size == 25:
+                # Decrement crate_count by 1 for crate_size of 25, or for supplements/substitutes/sample packs
+                is_single_unit_product = product and any(x in product.lower() for x in ["supplement", "substitute", "sample"])
+                if crate_size == 25 or is_single_unit_product:
                     cur.execute("""
                         UPDATE inventory SET crate_count = crate_count - 1
                         WHERE product = %s AND vendor = %s AND crate_count > 0

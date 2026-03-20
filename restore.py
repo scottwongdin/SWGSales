@@ -112,6 +112,25 @@ def run_restore(backup_folder):
                 print(f"  ✗ {table} — ERROR: {e}")
                 conn.rollback()
 
+        # Reset sequences to avoid primary key conflicts on next insert
+        print()
+        print("Resetting sequences...")
+        sequences = {
+            "sales": ("sales_mail_id_seq", "mail_id"),
+            "inventory": ("inventory_product_id_seq", "product_id"),
+            "factory_lines": None,
+            "factory_history": None
+        }
+        for table, seq in sequences.items():
+            if seq:
+                seq_name, col = seq
+                try:
+                    cur.execute(f"SELECT setval('{seq_name}', (SELECT COALESCE(MAX({col}), 1) FROM {table}))")
+                    conn.commit()
+                    print(f"  ✓ {table} sequence reset")
+                except Exception as e:
+                    print(f"  ✗ {table} sequence reset failed: {e}")
+
         cur.close()
         conn.close()
 

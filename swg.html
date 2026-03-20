@@ -352,9 +352,9 @@ async function loadInventory() {
   if (!Array.isArray(rows)) return;
   invAllRowsAll = rows.map(r => ({
     ...r,
-    replenish: r.restock === -1 ? null : r.total_units - r.restock
+    replenish: r.restock === -1 ? null : (r.crate_count || 0) - r.restock
   })).sort((a,b) => {
-    const rank = r => r.total_units<=0 ? 0 : (r.restock!==-1 && r.total_units<r.restock ? 1 : 2);
+    const rank = r => (r.crate_count||0)<=0 ? 0 : (r.restock!==-1 && (r.crate_count||0)<r.restock ? 1 : 2);
     return rank(a)-rank(b) || (a.replenish||0)-(b.replenish||0);
   });
   // Apply any active search filter
@@ -621,17 +621,15 @@ function renderInventoryPage() {
   const pageRows = invAllRows.slice(start, start + INV_PAGE_SIZE);
 
   const tableRows = pageRows.map(r => {
-    const cls = r.total_units<=0 ? 'row-danger' : (r.restock!==-1 && r.total_units<r.restock ? 'row-warning' : '');
+    const cls = r.crate_count<=0 ? 'row-danger' : (r.restock!==-1 && r.crate_count<r.restock ? 'row-warning' : '');
     return `<tr class="${cls}">
       <td class="editable" onclick="editInvCell(this, ${r.product_id}, 'product', '${escAttr(r.product)}')">${r.product}</td>
       <td class="editable num" onclick="editInvCell(this, ${r.product_id}, 'total_units', ${r.total_units})">${fmt(r.total_units)}</td>
       <td class="num">${formatCrates(r.total_units/25, r.product)}</td>
       <td class="editable num" onclick="editInvCell(this, ${r.product_id}, 'crate_count', ${r.crate_count||0})">${fmt(r.crate_count||0)}</td>
-      <td class="editable num" onclick="editInvCell(this, ${r.product_id}, 'restock', '${r.restock}')">${r.restock===-1?'—':fmt(r.restock)}</td>
-      <td class="num">${r.restock===-1?'':formatCrates(r.restock/25, r.product)}</td>
       <td class="editable" onclick="editInvCellSelect(this, ${r.product_id}, 'vendor', '${escAttr(r.vendor)}')">${r.vendor}</td>
       <td class="num">${r.replenish!=null?r.replenish:''}</td>
-      <td class="num">${r.replenish!=null?formatCrates(r.replenish/25,r.product):''}</td>
+      <td class="editable num" onclick="editInvCell(this, ${r.product_id}, 'restock', '${r.restock}')">${r.restock===-1?'—':fmt(r.restock)}</td>
       <td style="text-align:right;"><button class="btn btn-sm btn-danger" onclick="deleteInvRow(${r.product_id}, '${escAttr(r.product)}')">Delete</button></td>
     </tr>`;
   });
@@ -647,7 +645,7 @@ function renderInventoryPage() {
     </div>` : '';
 
   document.getElementById('inventory').innerHTML =
-    tableHTML(['Product','Total Units','Total Crates','Crate Count','Maintain','Maintain Crates','Vendor','Replenish','Replenish Crates',''], tableRows) + pagination;
+    tableHTML(['Product','Total Units','Total Crates','Crate Count','Vendor','Replenish','Maintain',''], tableRows) + pagination;
 }
 
 function filterInventory() {
