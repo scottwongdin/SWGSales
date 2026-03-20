@@ -4,3 +4,5 @@ initial_inventory.sql
 *.csv
 *.pyc
 *.pyc
+swg.db
+swg-DESKTOP-912JOKH.db
