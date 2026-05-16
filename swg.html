@@ -900,9 +900,13 @@ function resetLine(id) {
 }
 
 function saveRunToHistory(line) {
-  if (state.history.some(h=>h.product===(line.product||''))) return;
-  state.history.unshift({ id: uid(), product: line.product||'', tpu: line.tpu, unit: line.unit, qty: line.qty, createdAt: Date.now() });
-  if (state.history.length>50) state.history=state.history.slice(0,50);
+  const existing = state.history.find(h=>h.product===(line.product||''));
+  if (existing) {
+    existing.tpu = line.tpu; existing.unit = line.unit; existing.qty = line.qty; existing.createdAt = Date.now();
+  } else {
+    state.history.unshift({ id: uid(), product: line.product||'', tpu: line.tpu, unit: line.unit, qty: line.qty, createdAt: Date.now() });
+    if (state.history.length>50) state.history=state.history.slice(0,50);
+  }
   saveHistory();
 }
 
@@ -914,9 +918,14 @@ function resubmitRun(histId) {
   saveState(); switchInnerTab('lines'); renderLines();
 }
 
-function deleteHistory(id) {
+async function deleteHistory(id) {
   state.history = state.history.filter(h=>h.id!==id);
-  saveState(); renderHistory();
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/factory_history?id=eq.${id}`, {
+      method: 'DELETE', headers: SB_HEADERS
+    });
+  } catch(e) { console.error('Failed to delete history entry:', e); }
+  renderHistory();
 }
 
 function resumeTimers() {
